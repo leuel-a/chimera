@@ -4,16 +4,6 @@ Project Chimera is an **infrastructure factory for Autonomous AI Influencers**. 
 
 The architectural source of truth lives in `research/architecture_strategy.md`.
 
-## What this repository is (today)
-
-This repo currently contains:
-
-- **Architecture + product strategy**: `research/architecture_strategy.md`
-- **Spec-Driven Development (SDD) workspace**: `.specify/` (templates, scripts, and specs)
-- **A minimal Python entrypoint**: `main.py` (placeholder scaffold)
-
-The runtime/services described below are the intended target architecture; the implementation is being built iteratively from the specs.
-
 ## Architecture (high level)
 
 Chimera uses a **FastRender Swarm** pattern: **Planner → Workers → Judge**.
