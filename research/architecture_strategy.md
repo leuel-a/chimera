@@ -2,144 +2,223 @@
 
 ## Summary
 
-This document defines the high-level architecture for Project Chimera, the infrastructure factory for Autonomous AI Influencers. Our strategy pivots away from fragile, monolithic scripts towards a FastRender Swarm architecture. This ensures scalability, error recovery, and strict governance through a "Planner-Worker-Judge" separation of concerns.
+This document defines the high-level architecture for Project Chimera: an infrastructure factory for Autonomous AI Influencers. The architecture uses a FastRender Swarm (Planner–Worker–Judge) to combine centralized governance with horizontally scalable execution. The system is designed for Spec-Driven Development (SDD): specifications, schemas, and acceptance criteria are the source of truth, and the runtime enforces traceability, safety, and determinism.
 
-We adhere to Spec-Driven Development (SDD): Intent is the source of truth, and infrastructure ensures reliability.
+Project Chimera is also designed to operate as a protocol-compliant node in a broader Agent Social Network (e.g., OpenClaw), exposing capabilities through standardized interfaces instead of tight coupling.
 
-## Agent Pattern: The FastRender Swarm
+---
 
-We reject the sequential chain pattern (which is brittle and prone to cascading failures) in favor of the Hierarchical Swarm (FastRender Pattern). This pattern decouples strategy from execution and execution from validation.
+## Agent Pattern: FastRender Swarm (Planner–Worker–Judge)
+
+The architecture rejects brittle sequential chains in favor of constrained parallelism: planning and governance are centralized; execution is parallelized; validation gates all external effects.
 
 ### Core Roles
 
-The swarm consists of three specialized agent types:
+1. **Planner (Strategist)**
 
-1. The Planner (Strategist):
+- **Responsibility:** Reads `GlobalState` (campaign goals, budgets, constraints, recent observations) and decomposes objectives into a Directed Acyclic Graph (DAG) of atomic tasks.
+- **Control Model:** Single-writer for planning decisions to avoid conflicting strategies.
+- **Output:** Typed `Task` objects pushed to `TaskQueue` (Redis).
 
-- Responsibility: Monitors GlobalState (campaign goals, trends). Decomposes high-level goals into a Directed Acyclic Graph (DAG) of atomic tasks.
-- Behavior: Reactive. If a Worker fails or news shifts, the Planner re-optimizes the task graph dynamically.
-- Output: Task objects pushed to the TaskQueue (Redis).
+2. **Worker (Executor)**
 
-2. The Worker (Executor):
+- **Responsibility:** Stateless execution of one task at a time using external tools via MCP.
+- **Isolation:** Shared-nothing; workers do not communicate with each other; ephemeral compute.
+- **Output:** Typed `Result` objects pushed to `ReviewQueue`.
 
-- Responsibility: Stateless execution. Picks a single Task from the queue, executes it using MCP Tools (e.g., generate_image, search_web), and produces a Result.
-- Isolation: Shared-nothing architecture. Workers do not communicate with each other.
-- Output: Result objects pushed to the ReviewQueue.
+3. **Judge (Gatekeeper)**
 
-3. The Judge (Gatekeeper):
+- **Responsibility:** Validates every `Result` against acceptance criteria, safety policy, brand policy, and budget/commerce constraints.
+- **Authority:** `APPROVE` (commit), `REJECT` (retry), `ESCALATE` (HITL).
+- **State Commit:** Uses Optimistic Concurrency Control (OCC) to prevent race conditions during state updates.
 
-- Responsibility: QA and Governance. Validates Result artifacts against acceptance criteria and safety policies.
-- Authority: Can Approve (commit to state), Reject (retry), or Escalate (trigger HITL).
-- Concurrency: Uses Optimistic Concurrency Control (OCC) to prevent race conditions during state updates.
+### Task Lifecycle Protocol
+
+All task handoffs are protocol-driven and machine-readable.
+
+- **Task Schema:** JSON Schema / typed contract defining:
+  - `task_id`, `goal_id`, `task_type`, `inputs`, `constraints`, `acceptance_criteria`, `risk_tags`, `budget_scope`, `idempotency_key`
+- **Task States:** `PENDING` → `IN_PROGRESS` → `IN_REVIEW` → `COMPLETE` | `FAILED` | `ESCALATED`
+- **Idempotency:** Workers must be safe to retry; `idempotency_key` prevents double-posting/double-spend.
 
 ### Swarm Topology Diagram
 
 ```mermaid
 graph TD
-    subgraph "Orchestration Layer"
-        P[Planner Agent] -->|Decomposes Goals| TQ[(Task Queue - Redis)]
-        J[Judge Agent] -->|Commit/Reject| GS[(Global State - DB)]
-        J -->|Escalate| HITL[Human Reviewer]
-    end
+  subgraph "Orchestration Layer"
+    P[Planner Agent] -->|Typed Tasks| TQ[(Task Queue - Redis)]
+    J[Judge Agent] -->|Approve/Reject/Escalate| GS[(Global State - DB)]
+    J -->|Escalate| HITL[Human Reviewer]
+  end
 
-    subgraph "Execution Layer (Swarm)"
-        TQ --> W1[Worker 1: Research]
-        TQ --> W2[Worker 2: Content Gen]
-        TQ --> W3[Worker 3: Crypto Tx]
-    end
+  subgraph "Execution Layer (Swarm)"
+    TQ --> W1[Worker: Research/Perception]
+    TQ --> W2[Worker: Content Generation]
+    TQ --> W3[Worker: Engagement/Replies]
+    TQ --> W4[Worker: Agentic Commerce]
+  end
 
-    subgraph "Validation Layer"
-        W1 --> RQ[(Review Queue - Redis)]
-        W2 --> RQ
-        W3 --> RQ
-        RQ --> J
-    end
+  subgraph "Validation Layer"
+    W1 --> RQ[(Review Queue - Redis)]
+    W2 --> RQ
+    W3 --> RQ
+    W4 --> RQ
+    RQ --> J
+  end
 
-    GS -->|Read State| P
-    HITL -->|Approve/Deny| J
+  GS -->|Read State| P
+  HITL -->|Approve/Deny| J
 ```
 
-## Human-in-the-Loop (HITL) Strategy
+## Human-in-the-Loop (HITL) Governance
 
-Autonomy does not mean lack of supervision. We implement a Probability-Based Safety Layer to ensure brand safety and financial security.
+Autonomy is bounded by a mandatory validation gate. Every external effect (publishing, messaging, spending) is authorized by the Judge based on confidence, risk tags, and policy constraints.
 
 ### Decision Logic
 
-The Judge Agent is the sole enforcement point for HITL. It routes tasks based on two factors: Confidence Score and Sensitive Topic Filters.
+- Auto-Approve: confidence_score > 0.90 AND no sensitive tags.
+- Async Approval: 0.70 ≤ confidence_score ≤ 0.90 → Human Review Queue.
+- Reject/Retry: confidence_score < 0.70 → Reject; Planner retries with adjusted parameters.
+- Mandatory Review (Always HITL): Any action tagged with:
 
-- Auto-Approve: Confidence > 0.90 AND No Sensitive Topics detected. Action executes immediately.
-- Async Approval (Queue): Confidence 0.70 - 0.90. Task is paused and added to the Dashboard Queue for human operator sign-off.
-- Reject/Retry: Confidence < 0.70. Judge rejects the output and instructs Planner to retry with new parameters.
-- Mandatory Review: Any content flagging "Politics," "Financial Advice," or "Legal Claims" is routed to HITL regardless of confidence.
-- CFO Guardrail: Any financial transaction (Agentic Commerce) exceeding the daily budget limit is strictly rejected or escalated.
+  - Politics
+  - Financial Advice / Financial Claims
+  - Legal Claims
+  - High-Risk Brand Safety
+
+- Commerce Guardrails:
+
+- Any transaction exceeding configured daily budget caps → ESCALATE or REJECT
+- On-chain verification required for any settlement/transfer steps.
 
 ### HITL Workflow Diagram
 
 ```mermaid
 flowchart TD
-    Start([Judge Receives Result]) --> CheckSens{Sensitive Topic?}
-    CheckSens -- Yes --> Human[Human Review Queue]
-    CheckSens -- No --> CheckConf{Confidence Score?}
+  Start([Judge Receives Result]) --> CheckRisk{Risk/Sensitive Tag?}
+  CheckRisk -- Yes --> Human[Human Review Queue]
+  CheckRisk -- No --> CheckConf{Confidence Score?}
 
-    CheckConf -- "> 0.90 (High)" --> Commit[Commit to Global State]
-    CheckConf -- "0.70 - 0.90 (Med)" --> Human
-    CheckConf -- "< 0.70 (Low)" --> Reject[Reject & Retry]
+  CheckConf -- "> 0.90" --> Commit[Commit to Global State]
+  CheckConf -- "0.70 - 0.90" --> Human
+  CheckConf -- "< 0.70" --> Reject[Reject & Retry]
 
-    Human -- Approved --> Commit
-    Human -- Rejected --> Reject
+  Human -- Approved --> Commit
+  Human -- Rejected --> Reject
 ```
 
-## Database & Data Strategy
+## Spec-Driven Development (SDD) & Traceability
 
-We utilize a Hybrid Data Architecture to handle the distinct requirements of high-velocity memory, transactional integrity, and episodic state.
+The system is built so an agent (or human engineer) can safely extend behavior by following explicit specifications, schemas, and contracts.
+
+Chimera*Agentic_Infrastructure*…
+
+### Required Spec Artifacts
+
+- SRS / System Specs: Requirements, constraints, and non-functional expectations.
+- SOUL.md (Persona Contract): Agent identity, tone constraints, role boundaries, and governance rules.
+- Tool Schemas: MCP tool definitions including inputs/outputs and capability discovery.
+- Task/Result Schemas: JSON schemas + acceptance criteria templates.
+- Audit Expectations: Every approved external effect must have:
+- inputs, tool calls, outputs, confidence, risk tags, reviewer decision, timestamps.
+
+## Data & Persistence Strategy (Polyglot Persistence)
+
+Chimera uses purpose-fit storage based on velocity, consistency, and access patterns rather than a single database for all workloads.
+
+Chimera*Agentic_Infrastructure*…
 
 ### Data Stores
 
-1. Transactional (PostgreSQL):
+1. Transactional Store (PostgreSQL)
 
-- Usage: User accounts, Campaign Configurations, Financial Ledgers, Operational Logs.
-- Why: ACID compliance is non-negotiable for billing and user management.
+- Usage: Accounts, campaign configurations, governance policies, budgets, financial ledger entries, immutable audit records.
+- Reason: ACID guarantees for billing, permissions, and compliance.
 
-2. Semantic Memory (Weaviate):
+2. Semantic Memory (Vector DB: Weaviate)
 
-- Usage: Agent "Soul" (Persona), Long-term memories, World Knowledge.
-- Why: Vector search enables the agent to recall context ("Who am I?", "What did I say last month?") via RAG pipelines.
+- Usage: Long-term memory, persona retrieval, world knowledge snapshots, RAG retrieval.
+- Reason: Semantic recall for agent context.
 
-3. Episodic/Cache (Redis):
+3. Episodic + Queues + Locks (Redis)
 
-- Usage: Task Queues (TaskQueue, ReviewQueue), Short-term conversation history (Context Window), Mutex locks for OCC.
-- Why: Sub-millisecond latency is required for the high-frequency Planner-Worker loops.
+- Usage: TaskQueue, ReviewQueue, short-lived context windows, rate-limiters, mutex/lease locks for OCC.
+- Reason: Sub-millisecond latency for orchestration loops.
 
-### Entity Relationship Overview (Conceptual)
+4. High-Velocity Media Metadata (NoSQL Document/KV Store)
+
+- Usage: Media generation metadata that evolves rapidly under bursty parallel writes:
+  - prompts, model params, versioning, character consistency IDs, scores, retries, platform publish fields.
+- Reason: Schema flexibility + high write throughput; avoid continual SQL schema migrations and write contention.
+
+5. Media Asset Storage (Object Store)
+
+- Usage: Images/videos, thumbnails, intermediate renders, transcoded outputs.
+- Reason: Large binary storage, lifecycle policies, CDN integration.
+
+### Conceptual Entity Relationship Overview
 
 ```mermaid
 erDiagram
-    CAMPAIGN ||--|{ GOAL : has
-    GOAL ||--|{ TASK : decomposes_into
-    TASK }|--|| WORKER : assigned_to
-    TASK ||--|| RESULT : produces
-    RESULT }|--|| JUDGE : validated_by
+  CAMPAIGN ||--|{ GOAL : has
+  GOAL ||--|{ TASK : decomposes_into
+  TASK }|--|| WORKER : executed_by
+  TASK ||--|| RESULT : produces
+  RESULT }|--|| JUDGE : validated_by
 
-    AGENT_PERSONA ||--|{ MEMORY_VECTOR : recalls
-    AGENT_PERSONA ||--|{ WALLET : owns
+  AGENT_PERSONA ||--|{ MEMORY_VECTOR : recalls
+  MEDIA_ASSET ||--|| MEDIA_METADATA : described_by
+  MEDIA_ASSET ||--|{ PUBLISH_EVENT : produces
 
-    WALLET ||--|{ TRANSACTION : executes
+  WALLET ||--|{ TRANSACTION : executes
+  TRANSACTION }|--|| LEDGER_ENTRY : recorded_as
 ```
 
 ## Integration Strategy (MCP)
 
-All external interactions act through the Model Context Protocol (MCP). This separates our core logic from API volatility.
+All external interactions occur through MCP to isolate core orchestration logic from third-party API volatility, enable testability, and support capability discovery.
+
+Chimera*Agentic_Infrastructure*…
 
 ### MCP Architecture
 
-- **MCP Host**: The Agent Swarm Container.
-- **MCP Servers (Tools)**:
-  - `mcp-server-twitter`: Social actions (posting, engagement, analytics).
-  - `mcp-server-coinbase`: Wallet management (Agentic Commerce transactions).
-  - `mcp-server-weaviate`: Memory retrieval and semantic search.
+- MCP Host: Swarm runtime container(s) hosting Planner/Judge services and Worker pools.
+- MCP Servers (Tools):
+  - mcp-server-social: posting, engagement, analytics (platform-specific adapters behind a stable tool interface)
+  - mcp-server-media-gen: image/video generation tools
+  - mcp-server-search: web/news retrieval and citation capture
+  - mcp-server-memory: vector retrieval + embeddings
+  - mcp-server-wallet: wallet identity, signing, transaction execution, on-chain verification
 
-### Benefits
+### Tool Governance Requirements
 
-- **Decoupling**: Core agent logic remains independent of external API changes.
-- **Testability**: MCP servers can be mocked or replaced for testing.
-- **Extensibility**: New integrations are added as MCP servers without modifying core swarm logic.
+- Tools must declare:
+
+  - capabilities, input/output schemas, rate limits, side-effect classification (read vs write), and idempotency expectations.
+
+- The Judge must validate:
+
+  - tool selection appropriateness, output compliance, and side-effect authorization before any commit.
+
+## Agent Social Network Compatibility (OpenClaw Model)
+
+Chimera is designed as a protocol-compliant agent organization that participates in a broader agent ecosystem without sharing internal implementation or requiring direct agent-to-agent messaging.
+
+### Social Protocol Categories
+
+1. Capability & Identity Protocols
+
+   - Capability discovery via MCP tool schemas.
+   - Persona/identity declared through SOUL.md and explicit constraints.
+
+2. Task & Coordination Protocols
+
+   - Inter-agent coordination uses typed intents (task/result schemas) and queue-based handoffs rather than free-form chat.
+
+3. Economic & Trust Protocols
+
+   - Wallet-based identity, on-chain verification, budget enforcement, anomaly checks for agentic commerce.
+
+4. Governance & Safety Protocols
+
+   - Confidence scores, risk tags, escalation thresholds, and HITL signaling act as enforceable contracts for safe interoperability.
