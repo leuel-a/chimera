@@ -80,11 +80,11 @@ flowchart TD
     Start([Judge Receives Result]) --> CheckSens{Sensitive Topic?}
     CheckSens -- Yes --> Human[Human Review Queue]
     CheckSens -- No --> CheckConf{Confidence Score?}
-    
+
     CheckConf -- "> 0.90 (High)" --> Commit[Commit to Global State]
     CheckConf -- "0.70 - 0.90 (Med)" --> Human
     CheckConf -- "< 0.70 (Low)" --> Reject[Reject & Retry]
-    
+
     Human -- Approved --> Commit
     Human -- Rejected --> Reject
 ```
@@ -119,18 +119,27 @@ erDiagram
     TASK }|--|| WORKER : assigned_to
     TASK ||--|| RESULT : produces
     RESULT }|--|| JUDGE : validated_by
-    
+
     AGENT_PERSONA ||--|{ MEMORY_VECTOR : recalls
     AGENT_PERSONA ||--|{ WALLET : owns
-    
+
     WALLET ||--|{ TRANSACTION : executes
 ```
 
 ## Integration Strategy (MCP)
+
 All external interactions act through the Model Context Protocol (MCP). This separates our core logic from API volatility.
 
-- MCP Host: The Agent Swarm Container.
-- MCP Servers (Tools):
-    - mcp-server-twitter: Social actions.
-    - mcp-server-coinbase: Wallet management (Agentic Commerce).
-    - mcp-server-weaviate: Memory retrieval.
+### MCP Architecture
+
+- **MCP Host**: The Agent Swarm Container.
+- **MCP Servers (Tools)**:
+  - `mcp-server-twitter`: Social actions (posting, engagement, analytics).
+  - `mcp-server-coinbase`: Wallet management (Agentic Commerce transactions).
+  - `mcp-server-weaviate`: Memory retrieval and semantic search.
+
+### Benefits
+
+- **Decoupling**: Core agent logic remains independent of external API changes.
+- **Testability**: MCP servers can be mocked or replaced for testing.
+- **Extensibility**: New integrations are added as MCP servers without modifying core swarm logic.
