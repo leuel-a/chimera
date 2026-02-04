@@ -1,0 +1,113 @@
+# Byte-compiled / optimized / DLLs
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-wheel-metadata/
+pip-delete-this-directory.txt
+wheelhouse/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+env.bak/
+venv.bak/
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+pytest_cache/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Pyright / mypy / pylance
+.mypy_cache/
+.pyright/
+.pyre/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs and runtime files
+*.log
+logs/
+*.pid
+*.sock
+uvicorn*.log
+uvicorn.pid
+gunicorn.pid
+
+# Environment files / secrets
+.env
+.env.* 
+secrets.json
+*.pem
+*.key
+
+# Static and generated files
+*.pyc
+*.pyo
+*.pyd
+*.class
+*.cache
+*.sqlite3
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python dependency managers
+Pipfile.lock
+poetry.lock
+.cache/pip
+.venv/
+
+# Local project files
+.idea/
+.vscode/
+coverage/
+dist/
+build/
