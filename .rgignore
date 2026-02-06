@@ -1,1 +1,5 @@
 .git/
+.specify/
+.cursor/
+.vscode/
+.github/
