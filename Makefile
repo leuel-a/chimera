@@ -6,7 +6,7 @@ TEST_IMAGE := $(PROJECT_NAME)-tests:local
 # Backend-only test scope (frontend excluded by policy)
 TEST_PATHS := tests services/*/tests
 
-.PHONY: setup setup-py setup-node test test-docker spec-check clean
+.PHONY: setup setup-py setup-node test test-docker spec-check clean review review-uncommitted
 
 setup: setup-py setup-node
 
@@ -29,3 +29,12 @@ spec-check:
 
 clean:
 	rm -rf .pytest_cache .mypy_cache __pycache__
+
+# CodeRabbit CLI targets (requires: curl -fsSL https://cli.coderabbit.ai/install.sh | sh)
+review:
+	@command -v coderabbit >/dev/null 2>&1 || { echo "CodeRabbit CLI not installed. Run: curl -fsSL https://cli.coderabbit.ai/install.sh | sh"; exit 1; }
+	coderabbit review
+
+review-uncommitted:
+	@command -v coderabbit >/dev/null 2>&1 || { echo "CodeRabbit CLI not installed. Run: curl -fsSL https://cli.coderabbit.ai/install.sh | sh"; exit 1; }
+	coderabbit review --uncommitted

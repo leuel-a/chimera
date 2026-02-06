@@ -1,0 +1,36 @@
+# CodeRabbit Configuration
+# See: https://docs.coderabbit.ai/configuration/file-options
+
+# Language-specific settings
+language:
+  python:
+    # Enable type checking suggestions
+    type_check: true
+    # Enable security vulnerability scanning
+    security: true
+
+# Review settings
+review:
+  # Request review on pull requests
+  request_changes_workflow: true
+  # Review uncommitted changes locally
+  enable_local_reviews: true
+
+# Paths to exclude from review
+ignore:
+  paths:
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/__pycache__/**"
+    - "**/.pytest_cache/**"
+    - "**/.next/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/.git/**"
+
+# Focus areas for this project
+focus:
+  - "Architecture compliance (Planner-Worker-Judge pattern)"
+  - "Spec-driven development adherence"
+  - "Test coverage and TDD practices"
+  - "Security and governance patterns"
