@@ -1,5 +1,4 @@
 {
-  "env": {},
   "mcpServers": {
     "tenxfeedbackanalytics": {
       "name": "tenxanalysismcp",
@@ -11,6 +10,7 @@
     },
     "github": {
       "command": "docker",
+      "envFile": "${workspaceFolder}/.env",
       "args": [
         "run",
         "-i",
@@ -18,10 +18,15 @@
         "-e",
         "GITHUB_PERSONAL_ACCESS_TOKEN",
         "ghcr.io/github/github-mcp-server"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${env:GITHUB_PAT}"
-      }
+      ]
+    },
+    "docker": {
+      "command": "docker",
+      "args": [
+        "mcp",
+        "gateway",
+        "run"
+      ]
     }
   }
 }
